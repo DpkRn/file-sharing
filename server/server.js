@@ -19,7 +19,7 @@ const wss = new WebSocketServer({ server });
 wss.on('connection', (ws, req) => {
   const params = parse(req.url, true).query;
   const roomId = params.room;
-  const role = params.role; // 'sender' or 'receiver'
+  const role = params.role; 
  
   if (!roomId) {
     ws.close(1008, 'Room ID required');
