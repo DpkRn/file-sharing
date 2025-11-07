@@ -19,6 +19,7 @@ export const WebRTCProvider = ({ children }) => {
 
     peerRef.current.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log("exchanging offer")
         socket.emit("ice-candidate", event.candidate);
       }
     };

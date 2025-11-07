@@ -1,32 +1,49 @@
-const express = require("express");
-const { Server } = require("socket.io");
+import express from "express";
+import { Server } from "socket.io";
+import http from "http";
 
 const app = express();
-const rooms = new Map();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" },
+});
 
-const io = new Server(8001, { cors: { origin: "*" } });
-app.listen(8000, () => console.log("✅ Express on port 8000"));
+const rooms = new Map(); // 🧠 keep track of offers until receiver joins
 
 io.on("connection", (socket) => {
-  console.log("⚡ Connected:", socket.id);
+  console.log("🔌 User connected:", socket.id);
 
   socket.on("join-room", ({ roomId, isSender }) => {
-    if (!rooms.has(roomId)) rooms.set(roomId, {});
-    const room = rooms.get(roomId);
-    room[isSender ? "sender" : "receiver"] = socket.id;
     socket.join(roomId);
-    console.log(`📦 ${socket.id} joined room ${roomId}`);
+    console.log(`👥 ${isSender ? "Sender" : "Receiver"} joined room: ${roomId}`);
+
+    if (!isSender && rooms.has(roomId)) {
+      // Receiver just joined — send stored offer
+      const { offer, fileInfo } = rooms.get(roomId);
+      socket.emit("receive-offer", { offer, fileInfo });
+    }
   });
 
   socket.on("send-offer", ({ roomId, offer, fileInfo }) => {
+    console.log("📡 Offer stored for room:", roomId);
+    rooms.set(roomId, { offer, fileInfo });
+
+    // if receiver already joined, send immediately
     socket.to(roomId).emit("receive-offer", { offer, fileInfo });
   });
 
   socket.on("send-answer", ({ roomId, answer }) => {
+    console.log("📨 Answer received for room:", roomId);
     socket.to(roomId).emit("receive-answer", { answer });
   });
 
-  socket.on("ice-candidate", (candidate) => {
-    socket.broadcast.emit("ice-candidate", candidate);
+  //   socket.on("ice-candidate", (candidate) => {
+  //   socket.broadcast.emit("ice-candidate", candidate);
+  // });
+
+  socket.on("disconnect", () => {
+    console.log("❌ User disconnected:", socket.id);
   });
 });
+
+server.listen(8001, () => console.log("✅ Server running on port 8001"));
