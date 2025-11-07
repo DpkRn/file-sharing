@@ -7,7 +7,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" },
 });
-
+const PORT = process.env.PORT || 8001;
 app.get('/greet',(req,res)=>{
   res.send("welcome")
 })
@@ -49,4 +49,4 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(8001, () => console.log("✅ Server running on port 8001"));
+server.listen(PORT, () => console.log("✅ Server running on port 8001"));
