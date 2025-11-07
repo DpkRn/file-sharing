@@ -8,6 +8,9 @@ const io = new Server(server, {
   cors: { origin: "*" },
 });
 
+app.get('/greet',(req,res)=>{
+  res.send("welcome")
+})
 const rooms = new Map(); // 🧠 keep track of offers until receiver joins
 
 io.on("connection", (socket) => {

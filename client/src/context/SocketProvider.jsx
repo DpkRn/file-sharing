@@ -9,7 +9,7 @@ export const SocketProvider = ({ children }) => {
 
   const socket = useMemo(
     () =>
-      io(import.meta.env.VITE_SOCKET_URL || "http://localhost:8001", {
+      io(import.meta.env.VITE_SOCKET_URL || "https://signaling-server-steel.vercel.app/", {
         transports: ["websocket"],
         reconnection: true,
       }),
