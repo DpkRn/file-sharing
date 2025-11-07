@@ -1,132 +1,49 @@
-import { WebSocketServer } from 'ws';
-import { createServer } from 'http';
-import { parse } from 'url';
+import express from "express";
+import { Server } from "socket.io";
+import http from "http";
 
-const PORT = 3001;
-
-// Store active rooms and connections
-const rooms = new Map();
-
-// Create HTTP server
-const server = createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('WebRTC Signaling Server Running\n');
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" },
 });
 
-// Create WebSocket server
-const wss = new WebSocketServer({ server });
+const rooms = new Map(); // 🧠 keep track of offers until receiver joins
 
-wss.on('connection', (ws, req) => {
-  const params = parse(req.url, true).query;
-  const roomId = params.room;
-  const role = params.role; // 'sender' or 'receiver'
- 
-  if (!roomId) {
-    ws.close(1008, 'Room ID required');
-    return;
-  }
+io.on("connection", (socket) => {
+  console.log("🔌 User connected:", socket.id);
 
-  console.log(`${roomId} : ${role} --> connected`);
+  socket.on("join-room", ({ roomId, isSender }) => {
+    socket.join(roomId);
+    console.log(`👥 ${isSender ? "Sender" : "Receiver"} joined room: ${roomId}`);
 
-  // Initialize room if doesn't exist
-  if (!rooms.has(roomId)) {
-    rooms.set(roomId, {
-      sender: null,
-      receiver: null,
-      createdAt: Date.now()
-    });
-  }
-
-  const room = rooms.get(roomId);
-
-  // Assign connection to room
-  if (role === 'sender') {
-    if (room.sender) {
-      ws.close(1008, 'Sender already exists');
-      return;
-    }
-    room.sender = ws;
-  } else if (role === 'receiver') {
-    if (room.receiver) {
-      ws.close(1008, 'Receiver already exists');
-      return;
-    }
-    room.receiver = ws;
-  } else {
-    ws.close(1008, 'Invalid role');
-    return;
-  }
-
-
-  // Handle messages - relay to the other peer
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-      console.log("description:",data)
-      console.log(`[${roomId}] ${role} sent: type: ${data.type} `);
-
-      const otherPeer = role === 'sender' ? room.receiver : room.sender;
-      
-      if (otherPeer && otherPeer.readyState === 1) { // 1 = OPEN
-        otherPeer.send(message);
-        console.log(`[${roomId}] Relayed ${data.type} to ${role === 'sender' ? 'receiver' : 'sender'}`);
-      } else {
-        console.log(`[${roomId}] Other peer not connected yet`);
-      }
-    } catch (error) {
-      console.error(`[${roomId}] Error processing message:`, error);
+    if (!isSender && rooms.has(roomId)) {
+      // Receiver just joined — send stored offer
+      const { offer, fileInfo } = rooms.get(roomId);
+      socket.emit("receive-offer", { offer, fileInfo });
     }
   });
 
-  // Handle disconnection
-  ws.on('close', () => {
-    console.log(`[${roomId}] ${role} disconnected`);
-    
-    if (role === 'sender') {
-      room.sender = null;
-    } else if (role === 'receiver') {
-      room.receiver = null;
-    }
+  socket.on("send-offer", ({ roomId, offer, fileInfo }) => {
+    console.log("📡 Offer stored for room:", roomId);
+    rooms.set(roomId, { offer, fileInfo });
 
-    // Clean up room if both peers disconnected
-    if (!room.sender && !room.receiver) {
-      console.log(`[${roomId}] Room cleaned up`);
-      rooms.delete(roomId);
-    }
+    // if receiver already joined, send immediately
+    socket.to(roomId).emit("receive-offer", { offer, fileInfo });
   });
 
-  ws.on('error', (error) => {
-    console.error(`[${roomId}] WebSocket error:`, error);
+  socket.on("send-answer", ({ roomId, answer }) => {
+    console.log("📨 Answer received for room:", roomId);
+    socket.to(roomId).emit("receive-answer", { answer });
+  });
+
+  //   socket.on("ice-candidate", (candidate) => {
+  //   socket.broadcast.emit("ice-candidate", candidate);
+  // });
+
+  socket.on("disconnect", () => {
+    console.log("❌ User disconnected:", socket.id);
   });
 });
 
-// Clean up stale rooms (older than 1 hour)
-setInterval(() => {
-  const now = Date.now();
-  const oneHour = 60 * 60 * 1000;
-  
-  for (const [roomId, room] of rooms.entries()) {
-    if (now - room.createdAt > oneHour) {
-      console.log(`[${roomId}] Cleaning up stale room`);
-      if (room.sender) room.sender.close();
-      if (room.receiver) room.receiver.close();
-      rooms.delete(roomId);
-    }
-  }
-}, 5 * 60 * 1000); // Check every 5 minutes
-
-server.listen(PORT, () => {
-  console.log(`WebRTC Signaling Server listening on port ${PORT}`);
-  console.log(`WebSocket endpoint: ws://localhost:${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, closing server...');
-  wss.close(() => {
-    server.close(() => {
-      console.log('Server closed');
-      process.exit(0);
-    });
-  });
-});
+server.listen(8001, () => console.log("✅ Server running on port 8001"));
