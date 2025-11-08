@@ -6,10 +6,10 @@ import { WebRTCProvider } from './context/WebRTCProvider.jsx'
 
 createRoot(document.getElementById('root')).render(
   <SocketProvider>
+     <WebRTCProvider>
     <BrowserRouter>
-      <WebRTCProvider>
         <App />
-      </WebRTCProvider>
     </BrowserRouter>
+     </WebRTCProvider>
   </SocketProvider>
 );

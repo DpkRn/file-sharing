@@ -11,7 +11,7 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 8001;
 
 app.get('/greet',(req,res)=>{
-  res.send("welcome")
+  res.status(200).send("welcome")
 })
 
 const rooms = new Map(); // 🧠 keep track of offers until receiver joins
