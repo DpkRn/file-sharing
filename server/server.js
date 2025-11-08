@@ -7,10 +7,13 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" },
 });
+
 const PORT = process.env.PORT || 8001;
+
 app.get('/greet',(req,res)=>{
   res.send("welcome")
 })
+
 const rooms = new Map(); // 🧠 keep track of offers until receiver joins
 
 io.on("connection", (socket) => {
@@ -40,13 +43,13 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("receive-answer", { answer });
   });
 
-  //   socket.on("ice-candidate", (candidate) => {
-  //   socket.broadcast.emit("ice-candidate", candidate);
-  // });
+    socket.on("ice-candidate", (candidate) => {
+    socket.broadcast.emit("ice-candidate", candidate);
+  });
 
   socket.on("disconnect", () => {
     console.log("❌ User disconnected:", socket.id);
   });
 });
 
-server.listen(PORT, () => console.log("✅ Server running on port 8001"));
+server.listen(PORT, '0.0.0.0',() => console.log("✅ Server running on port 8001"));
