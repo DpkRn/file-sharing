@@ -6,7 +6,8 @@ export const useSocket = () => useContext(SocketContext);
 
 export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
-  const [roomId, setRoomId] = useState("");
+  const [roomId, setRoomId] = useState('');
+  const [isSender,setIsSender]=useState(true);
 
   const socket = useMemo(
     () =>
@@ -44,7 +45,7 @@ export const SocketProvider = ({ children }) => {
   
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected, roomId, setRoomId }}>
+    <SocketContext.Provider value={{ socket, isConnected, roomId, setRoomId,setIsSender,isSender }}>
       {children}
     </SocketContext.Provider>
   );

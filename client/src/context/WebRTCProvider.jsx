@@ -16,10 +16,10 @@ const ICE_SERVERS = [
 ];
 
 export const WebRTCProvider = ({ children }) => {
-  const { socket,roomId } = useSocket();
+  const { socket,roomId, isSender } = useSocket();
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isIceConnected, setIsIceConnected] = useState(false);
   const [remoteReady, setRemoteReady] = useState(false);
 
   useEffect(() => {
@@ -29,20 +29,16 @@ export const WebRTCProvider = ({ children }) => {
     const peer = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     peerRef.current = peer;
 
-    peer.onicecandidate = (e) => {
-      console.log("iceCandidate:",e.candidate)
-      if (e.candidate) {
-        socket.emit("ice-candidate", { roomId, candidate: e.candidate });
-      }
-    };
+    
 
   
 
-    // peer.onconnectionstatechange = () => {
-    //   const state = peer.connectionState;
-    //   console.log("📡 WebRTC state:", state);
-    //   setIsConnected(state === "connected");
-    // };
+     peer.oniceconnectionstatechange = () => {
+      if (peer.iceConnectionState === "connected") {
+        console.log("connected")
+          setIsIceConnected(true)
+      }
+    };
 
     peer.ondatachannel = (e) => {
       console.log("📥 Receiver: Data channel opened");
@@ -60,12 +56,14 @@ export const WebRTCProvider = ({ children }) => {
   // Handle incoming ICE candidates
   useEffect(() => {
     if (!socket) return;
+ console.log("registered")
+    const handleIce = ({candidate}) => {
 
-    const handleIce = (candidate) => {
+      console.log("its time to add candidate");
       peerRef.current?.addIceCandidate(new RTCIceCandidate(candidate));
+      setIsIceConnected(true)
     };
     socket.on("ice-candidate", handleIce);
-
     return () => socket.off("ice-candidate", handleIce);
   }, [socket]);
 
@@ -135,7 +133,7 @@ export const WebRTCProvider = ({ children }) => {
         setRemoteDescription,
         createDataChannel,
         sendData,
-        isConnected,
+       isIceConnected,
         remoteReady,
         peerRef,
         dataChannelRef,

@@ -7,8 +7,8 @@ import DownloadCard from "../components/DownloadCard";
 
 export default function Receiver() {
   const { url: roomId } = useParams();
-  const { socket, isConnected } = useSocket();
-  const { peerRef, createAnswer } = useWebRTC();
+  const { socket, isConnected, setIsSender, isSender } = useSocket();
+  const { peerRef, createAnswer, isIceConnected } = useWebRTC();
   const [fileInfo, setFileInfo] = useState(null);
   const [downloadUrl, setDownloadUrl] = useState(null);
 
@@ -25,30 +25,35 @@ export default function Receiver() {
 
   // 🧠 update when websocket connects
   useEffect(() => {
-    if (isConnected) {
-      setStatus((prev) => ({ ...prev, socketConnected: true }));
+    if (roomId) {
+      setIsSender(false);
     }
-  }, [isConnected]);
+    if (isConnected) {
+      setStatus((prev) => ({ ...prev, socketConnected: isConnected }));
+    }
+
+    if (isIceConnected) {
+      setStatus((prev) => ({ ...prev, iceConnected: isIceConnected }));
+    }
+  }, [isConnected, roomId, isIceConnected]);
 
   const handleOffer = async ({ offer, fileInfo }) => {
     setStatus((prev) => ({ ...prev, offerReceived: true }));
-    setStatus((prev)=>({ ...prev, joinedRoom: true }))
-    if (fileInfo) {
-      setFileInfo(fileInfo);
-    }
-    const answer = await createAnswer(offer);
-    setStatus((prev) => ({ ...prev, answerSent: true }));
-    socket.emit("send-answer", { roomId, answer });
-  };
+    setStatus((prev) => ({ ...prev, joinedRoom: true }));
 
-  useEffect(() => {
-    if (!socket || !peerRef) return;
-
-    // 🟢 Join the room
-    socket.emit("join-room", { roomId, isSender: false });
-    socket.on("receive-offer", handleOffer);
-    // Setup to receive DataChannel
-    peerRef.ondatachannel = (event) => {
+    peerRef.current.onicecandidate = (e) => {
+      console.log("iceCandidate done:", e.candidate);
+      if (e.candidate) {
+        console.log(e.candidate);
+        console.log("roomID:", roomId);
+        socket.emit("ice-candidate", {
+          roomId,
+          candidate: e.candidate,
+          isSender,
+        });
+      }
+    };
+     peerRef.current.ondatachannel = (event) => {
       const channel = event.channel;
       const chunks = [];
       setStatus((prev) => ({ ...prev, channelReceived: true }));
@@ -71,12 +76,22 @@ export default function Receiver() {
       };
     };
 
-    // Monitor ICE state
-    peerRef.oniceconnectionstatechange = () => {
-      if (peerRef.iceConnectionState === "connected") {
-        setStatus((prev) => ({ ...prev, iceConnected: true }));
-      }
-    };
+    if (fileInfo) {
+      setFileInfo(fileInfo);
+    }
+    const answer = await createAnswer(offer);
+    setStatus((prev) => ({ ...prev, answerSent: true }));
+    socket.emit("send-answer", { roomId, answer });
+  };
+
+  useEffect(() => {
+    if (!socket || !peerRef) return;
+    console.log("peerref:", peerRef.current);
+
+    // 🟢 Join the room
+    socket.emit("join-room", { roomId, isSender: false });
+    socket.on("receive-offer", handleOffer);
+    // Setup to receive DataChannel
 
     return () => socket.off("receive-offer", handleOffer);
   }, [socket, peerRef, roomId]);
@@ -103,7 +118,7 @@ export default function Receiver() {
         {/* ✅ Connection Status */}
         <div className="text-left">
           <h3 className="font-semibold mb-2 text-gray-700 text-lg">
-            Connection Status
+            {!isSender && "Reciever Connection Status"}
           </h3>
           {[
             ["WebSocket Connected", status.socketConnected],

@@ -12,8 +12,9 @@ export default function Sender() {
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const { socket, setRoomId, isConnected } = useSocket();
-  const { createOffer, createDataChannel, sendData, peerRef } = useWebRTC();
+  const { socket, setRoomId, isConnected, isSender } = useSocket();
+  const { createOffer, createDataChannel, sendData, peerRef, isIceConnected } =
+    useWebRTC();
 
   const [status, setStatus] = useState({
     socketConnected: false,
@@ -30,10 +31,9 @@ export default function Sender() {
 
   // 🧠 When WebSocket connects
   useEffect(() => {
-    if (isConnected) {
-      setStatus((prev) => ({ ...prev, socketConnected: true }));
-    }
-  }, [isConnected]);
+    setStatus((prev) => ({ ...prev, socketConnected: isConnected }));
+    setStatus((prev) => ({ ...prev, iceConnected: isIceConnected }));
+  }, [isConnected, isIceConnected]);
 
   // 🧩 File Sending Logic
   const sendFile = async (file, dc) => {
@@ -59,53 +59,51 @@ export default function Sender() {
     if (!f) return;
     setFile(f);
 
-    const room = generateRoomId();
-    setRoomId(room);
-    setShareUrl(`${window.location.origin}/share/${room}`);
+    const roomId = generateRoomId();
+    setRoomId(roomId);
+    setShareUrl(`${window.location.origin}/share/${roomId}`);
 
-    socket.emit("join-room", { roomId: room, isSender: true });
+    socket.emit("join-room", { roomId: roomId, isSender: true });
     setStatus((prev) => ({ ...prev, joinedRoom: true }));
 
-    // Create a Data Channel
-    const dc = createDataChannel();
-    setStatus((prev) => ({ ...prev, channelCreated: true }));
+    // socket.on("reciever-joined", async () => {
+      const dc = createDataChannel();
+      setStatus((prev) => ({ ...prev, channelCreated: true }));
 
-    // Create & send offer
-    const offer = await createOffer();
-    setStatus((prev) => ({ ...prev, offerCreated: true }));
+      // Create & send offer
+      const offer = await createOffer();
+      setStatus((prev) => ({ ...prev, offerCreated: true }));
 
-    socket.emit("send-offer", { roomId: room, offer, fileInfo: getFileInfo(f) });
-    setStatus((prev) => ({ ...prev, offerSent: true }));
+      socket.emit("send-offer", {
+        roomId: roomId,
+        offer,
+        fileInfo: getFileInfo(f),
+      });
+      setStatus((prev) => ({ ...prev, offerSent: true }));
 
-    // ICE Connection listener
-    peerRef.oniceconnectionstatechange = () => {
-      if (peerRef.iceConnectionState === "connected") {
-        setStatus((prev) => ({ ...prev, iceConnected: true }));
+      socket.on("receive-answer", async ({ answer }) => {
+        if (!answer) return;
+        await peerRef.current.setRemoteDescription(answer);
+        setStatus((prev) => ({ ...prev, offerAccepted: true }));
+        console.log("🎯 Answer received, ready to send file");
+        setStatus((prev) => ({ ...prev, answerReceived: true }));
+        // When Data Channel opens → send file
+        dc.onopen = () => {
+          setStatus((prev) => ({ ...prev, channelOpened: true }));
+          sendFile(f, dc);
+        };
+      });
+    // });
+    peerRef.current.onicecandidate = (e) => {
+      console.log("iceCandidate done:",e.candidate)
+      if (e.candidate) {
+        console.log(e.candidate)
+        console.log("roomID:",roomId)
+          socket.emit("ice-candidate", { roomId, candidate: e.candidate,isSender })
       }
     };
 
-
-    
-
-    // Remote peer joined confirmation (optional custom event from server)
-    socket.on("offer-accepted", () => {
-    });
-
     // When answer received
-    socket.on("receive-answer", async ({ answer }) => {
-      console.log("answer:",answer)
-      if(!answer) return
-      setStatus((prev) => ({ ...prev, offerAccepted: true }));
-      await peerRef.current.setRemoteDescription(answer);
-      console.log("🎯 Answer received, ready to send file");
-      setStatus((prev) => ({ ...prev, answerReceived: true }));
-
-      // When Data Channel opens → send file
-      dc.onopen = () => {
-        setStatus((prev) => ({ ...prev, channelOpened: true }));
-        sendFile(f, dc);
-      };
-    });
   };
 
   return (
@@ -153,7 +151,7 @@ export default function Sender() {
         {/* ✅ Connection Progress */}
         <div className="mt-6 text-left">
           <h3 className="font-semibold mb-2 text-gray-700 text-lg">
-            Connection Status
+            {isSender && "Sender Connection Status"}
           </h3>
           {[
             ["WebSocket Connected", status.socketConnected],
