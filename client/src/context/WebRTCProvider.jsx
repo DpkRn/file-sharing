@@ -1,86 +1,144 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useSocket } from "./SocketProvider";
 
 const WebRTCContext = createContext(null);
 export const useWebRTC = () => useContext(WebRTCContext);
 
-// Use proper ICE servers (add TURN if needed)
 const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
 
 export const WebRTCProvider = ({ children }) => {
-  const { socket } = useSocket();
-
+  const { socket,roomId } = useSocket();
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
-  // Initialize PeerConnection
-  const peer = useMemo(() => {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const [isConnected, setIsConnected] = useState(false);
+  const [remoteReady, setRemoteReady] = useState(false);
 
-    // ICE candidate handling
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        console.log("Sending ICE candidate to server");
-        socket.emit("ice-candidate", event.candidate);
+  useEffect(() => {
+    if (!socket) return;
+
+    // Create RTCPeerConnection
+    const peer = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    peerRef.current = peer;
+
+    peer.onicecandidate = (e) => {
+      console.log("iceCandidate:",e.candidate)
+      if (e.candidate) {
+        socket.emit("ice-candidate", { roomId, candidate: e.candidate });
       }
     };
 
-    // Handle incoming data channel
-    pc.ondatachannel = (event) => {
-      const channel = event.channel;
-      channel.onmessage = (e) => {
-        console.log("Received message:", e.data);
-      };
+  
+
+    // peer.onconnectionstatechange = () => {
+    //   const state = peer.connectionState;
+    //   console.log("📡 WebRTC state:", state);
+    //   setIsConnected(state === "connected");
+    // };
+
+    peer.ondatachannel = (e) => {
+      console.log("📥 Receiver: Data channel opened");
+      dataChannelRef.current = e.channel;
+      dataChannelRef.current.onmessage = (e) => handleIncomingMessage(e.data);
     };
 
-    peerRef.current = pc;
-    return pc;
+    // Cleanup
+    return () => {
+      peer.close();
+      dataChannelRef.current?.close();
+    };
   }, [socket]);
 
-  // Create offer and set local description
-  const createOffer = async () => {
-    const localOffer = await peer.createOffer();
-    await peer.setLocalDescription(localOffer);
-    console.log("Local offer created and stored");
-    return localOffer;
-  };
+  // Handle incoming ICE candidates
+  useEffect(() => {
+    if (!socket) return;
 
-  const createAnswer=async(offer)=>{
-       await peer.setRemoteDescription(offer)
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-      return answer
-  }
+    const handleIce = (candidate) => {
+      peerRef.current?.addIceCandidate(new RTCIceCandidate(candidate));
+    };
+    socket.on("ice-candidate", handleIce);
 
-  // Create a data channel
-  const createDataChannel = (label, onMessageCallback) => {
-    const channel = peerRef.current.createDataChannel(label);
-    channel.onmessage = (e) => onMessageCallback && onMessageCallback(e.data);
+    return () => socket.off("ice-candidate", handleIce);
+  }, [socket]);
+
+ 
+
+  const createDataChannel = (onMessage) => {
+    const channel = peerRef.current.createDataChannel("file-transfer");
     dataChannelRef.current = channel;
+
+    channel.onopen = () => {
+      console.log("🚀 DataChannel open (sender)");
+      setRemoteReady(true);
+    };
+
+    channel.onclose = () => console.log("❌ DataChannel closed");
+    channel.onerror = (err) => console.error("⚠️ DataChannel error:", err);
+    channel.onmessage = (e) => onMessage && onMessage(e.data);
+
     return channel;
   };
 
-  // Send data over the data channel
+  const createOffer = async () => {
+    const offer = await peerRef.current.createOffer();
+    await peerRef.current.setLocalDescription(offer);
+    return offer;
+  };
+
+  const createAnswer = async (offer) => {
+    await peerRef.current.setRemoteDescription(
+      new RTCSessionDescription(offer)
+    );
+    const answer = await peerRef.current.createAnswer();
+    await peerRef.current.setLocalDescription(answer);
+    return answer;
+  };
+
+  const setRemoteDescription = async (desc) => {
+  const peer = peerRef.current;
+  try {
+    await peer.setRemoteDescription(new RTCSessionDescription(desc));
+    console.log("✅ Remote description set");
+  } catch (err) {
+    console.warn("⚠️ Failed to set remote description:", err.message);
+  }
+};
+
+
   const sendData = (data) => {
-    if (dataChannelRef.current?.readyState === "open") {
-      dataChannelRef.current.send(data);
+    const dc = dataChannelRef.current;
+    if (dc?.readyState === "open") {
+      dc.send(data);
     } else {
-      console.warn("Data channel is not open");
+      console.warn("⚠️ DataChannel not ready to send data");
     }
   };
 
-  // Automatically create offer on mount
+  const handleIncomingMessage = (data) => {
+    // optional: can be replaced dynamically by user
+    console.log("📦 Received data:", data);
+  };
 
   return (
     <WebRTCContext.Provider
       value={{
-        peer,
         createOffer,
         createAnswer,
+        setRemoteDescription,
         createDataChannel,
         sendData,
+        isConnected,
+        remoteReady,
+        peerRef,
+        dataChannelRef,
       }}
     >
       {children}

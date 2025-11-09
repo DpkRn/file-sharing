@@ -1,82 +1,181 @@
-import React, { useRef, useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Wifi, Upload, Copy, Check } from "lucide-react";
 import { useSocket } from "../context/SocketProvider";
 import { useWebRTC } from "../context/WebRTCProvider";
 import { copyToClipboard, generateRoomId, getFileInfo } from "../utils";
 
-const Sender = () => {
+const CHUNK_SIZE = 16 * 1024; // 16 KB per chunk
+
+export default function Sender() {
   const [file, setFile] = useState(null);
+  const [progress, setProgress] = useState(0);
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
-  const { socket, isConnected } = useSocket();
-  const { peer, createOffer, createDataChannel, sendData } = useWebRTC();
 
-  const fileRef = useRef(null);
+  const { socket, setRoomId, isConnected } = useSocket();
+  const { createOffer, createDataChannel, sendData, peerRef } = useWebRTC();
 
-  const handleFileSelect = async (e) => {
+  const [status, setStatus] = useState({
+    socketConnected: false,
+    channelCreated: false,
+    joinedRoom: false,
+    offerCreated: false,
+    offerSent: false,
+    offerAccepted: false,
+    answerReceived: false,
+    iceConnected: false,
+    channelOpened: false,
+    dataSent: false,
+  });
 
-    const selectedFile = e.target.files[0];
-    if (!selectedFile) return;
-    setFile(selectedFile);
+  // 🧠 When WebSocket connects
+  useEffect(() => {
+    if (isConnected) {
+      setStatus((prev) => ({ ...prev, socketConnected: true }));
+    }
+  }, [isConnected]);
 
-    const roomId = generateRoomId();
-    const url = `${window.location.origin}/share/${roomId}`;
-    setShareUrl(url);
+  // 🧩 File Sending Logic
+  const sendFile = async (file, dc) => {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    let offset = 0;
 
-    socket.emit("join-room", { roomId, isSender: true });
+    while (offset < file.size) {
+      const chunk = await file.slice(offset, offset + CHUNK_SIZE).arrayBuffer();
+      sendData(chunk);
+      offset += CHUNK_SIZE;
+      setProgress(Math.round((offset / file.size) * 100));
+    }
 
-    const offer= await createOffer();
-    socket.emit("send-offer", {
-      roomId,
-      offer,
-      fileInfo: getFileInfo(selectedFile),
-    });
-
-    socket.on("receive-answer", async ({ answer }) => {
-      if (peer) await peer.setRemoteDescription(answer);
-      console.log("✅ Answer received from receiver:",answer);
-    });
-  
+    // ✅ Notify receiver file is done
+    dc.send(JSON.stringify({ done: true }));
+    console.log("✅ File sent completely");
+    setStatus((prev) => ({ ...prev, dataSent: true }));
   };
 
-  
+  // 📂 Handle File Selection
+  const handleFileSelect = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setFile(f);
+
+    const room = generateRoomId();
+    setRoomId(room);
+    setShareUrl(`${window.location.origin}/share/${room}`);
+
+    socket.emit("join-room", { roomId: room, isSender: true });
+    setStatus((prev) => ({ ...prev, joinedRoom: true }));
+
+    // Create a Data Channel
+    const dc = createDataChannel();
+    setStatus((prev) => ({ ...prev, channelCreated: true }));
+
+    // Create & send offer
+    const offer = await createOffer();
+    setStatus((prev) => ({ ...prev, offerCreated: true }));
+
+    socket.emit("send-offer", { roomId: room, offer, fileInfo: getFileInfo(f) });
+    setStatus((prev) => ({ ...prev, offerSent: true }));
+
+    // ICE Connection listener
+    peerRef.oniceconnectionstatechange = () => {
+      if (peerRef.iceConnectionState === "connected") {
+        setStatus((prev) => ({ ...prev, iceConnected: true }));
+      }
+    };
+
+
+    
+
+    // Remote peer joined confirmation (optional custom event from server)
+    socket.on("offer-accepted", () => {
+    });
+
+    // When answer received
+    socket.on("receive-answer", async ({ answer }) => {
+      console.log("answer:",answer)
+      if(!answer) return
+      setStatus((prev) => ({ ...prev, offerAccepted: true }));
+      await peerRef.current.setRemoteDescription(answer);
+      console.log("🎯 Answer received, ready to send file");
+      setStatus((prev) => ({ ...prev, answerReceived: true }));
+
+      // When Data Channel opens → send file
+      dc.onopen = () => {
+        setStatus((prev) => ({ ...prev, channelOpened: true }));
+        sendFile(f, dc);
+      };
+    });
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
+      <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md text-center">
+        {/* Wifi Indicator */}
         <div
-          className={`w-16 h-16 ${
+          className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${
             isConnected ? "bg-green-500" : "bg-red-400"
-          } rounded-full mx-auto flex items-center justify-center`}
+          }`}
         >
-          <Wifi className="text-white" size={32} />
+          <Wifi className="text-white" size={28} />
         </div>
-        <h1 className="text-3xl font-bold my-4">P2P File Share</h1>
-        <label className="block cursor-pointer border-2 border-dashed p-8 rounded-xl hover:bg-indigo-50">
-          <Upload className="mx-auto text-indigo-600 mb-4" size={48} />
+
+        <h1 className="text-2xl font-bold mt-4 mb-6">P2P File Sender</h1>
+
+        {/* File Upload */}
+        <label className="cursor-pointer border-2 border-dashed rounded-xl p-8 hover:bg-indigo-50">
+          <Upload className="mx-auto text-indigo-600 mb-3" size={40} />
           <p>Select a file to share</p>
-          <input type="file" onChange={handleFileSelect} className="hidden" />
+          <input type="file" hidden onChange={handleFileSelect} />
         </label>
 
+        {/* Progress */}
+        {file && <p className="mt-3 text-gray-700">Sending: {progress}%</p>}
+
+        {/* Share Link */}
         {shareUrl && (
-          <div className="mt-4">
+          <div className="mt-5">
             <input
               value={shareUrl}
               readOnly
               className="border p-2 rounded w-full text-sm"
             />
             <button
-              onClick={()=>copyToClipboard(shareUrl,setCopied)}
-              className="mt-2 w-full bg-indigo-600 text-white rounded-lg py-2 flex justify-center items-center gap-2"
+              onClick={() => copyToClipboard(shareUrl, setCopied)}
+              className="mt-2 w-full bg-indigo-600 text-white py-2 rounded-lg flex items-center justify-center gap-2"
             >
               {copied ? <Check size={16} /> : <Copy size={16} />}
               {copied ? "Copied!" : "Copy Link"}
             </button>
           </div>
         )}
+
+        {/* ✅ Connection Progress */}
+        <div className="mt-6 text-left">
+          <h3 className="font-semibold mb-2 text-gray-700 text-lg">
+            Connection Status
+          </h3>
+          {[
+            ["WebSocket Connected", status.socketConnected],
+            ["Joined Room", status.joinedRoom],
+            ["Data Channel Created", status.channelCreated],
+            ["Offer Created", status.offerCreated],
+            ["Offer Sent", status.offerSent],
+            ["Offer Accepted by Peer", status.offerAccepted],
+            ["Answer Received", status.answerReceived],
+            ["ICE Connected", status.iceConnected],
+            ["Channel Opened", status.channelOpened],
+            ["Data Sent Successfully", status.dataSent],
+          ].map(([label, done], i) => (
+            <div key={i} className="flex items-center gap-2 mb-1">
+              <input type="checkbox" checked={done} readOnly />
+              <span className={`${done ? "text-green-600" : "text-gray-500"}`}>
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
-};
-
-export default Sender;
+}

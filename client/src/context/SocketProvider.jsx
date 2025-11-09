@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
 
 const SocketContext = createContext(null);
@@ -6,35 +6,45 @@ export const useSocket = () => useContext(SocketContext);
 
 export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
+  const [roomId, setRoomId] = useState("");
 
   const socket = useMemo(
     () =>
-      io(import.meta.env.VITE_SOCKET_URL || "http://localhost:8001/", {
+      io(import.meta.env.VITE_SOCKET_URL || "http://localhost:8001", {
         transports: ["websocket"],
         reconnection: true,
+        reconnectionAttempts: 5,
       }),
     []
   );
 
   useEffect(() => {
+    //register connect even
     socket.on("connect", () => {
+      console.log("✅ Connected to Socket:", socket.id);
       setIsConnected(true);
-      console.log("✅ Socket connected:", socket.id);
     });
 
+    //register disconnect even
     socket.on("disconnect", () => {
+      console.log("❌ Disconnected from Socket");
       setIsConnected(false);
-      console.log("❌ Socket disconnected");
+    });
+
+    //register connection error
+    socket.on("connect_error", (err) => {
+      console.error("⚠️ Socket connection error:", err.message);
     });
 
     return () => {
       socket.disconnect();
-      console.log("🧹 Socket cleaned up");
     };
   }, [socket]);
 
+  
+
   return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
+    <SocketContext.Provider value={{ socket, isConnected, roomId, setRoomId }}>
       {children}
     </SocketContext.Provider>
   );

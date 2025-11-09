@@ -10,9 +10,9 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 8001;
 
-app.get('/greet',(req,res)=>{
-  res.status(200).send("welcome")
-})
+app.get("/greet", (req, res) => {
+  res.status(200).send("welcome");
+});
 
 const rooms = new Map(); // 🧠 keep track of offers until receiver joins
 
@@ -21,30 +21,38 @@ io.on("connection", (socket) => {
 
   socket.on("join-room", ({ roomId, isSender }) => {
     socket.join(roomId);
-    console.log(`👥 ${isSender ? "Sender" : "Receiver"} joined room: ${roomId}`);
 
+    if (isSender && !rooms.has(roomId)) {
+      rooms.set(roomId, { sender: socket.id });
+    }
     if (!isSender && rooms.has(roomId)) {
       // Receiver just joined — send stored offer
-      const { offer, fileInfo } = rooms.get(roomId);
+      const room = rooms.get(roomId);
+      rooms.set(roomId, { ...room, receiver: socket.id });
+      const { offer, fileInfo } = room;
       socket.emit("receive-offer", { offer, fileInfo });
     }
+    socket.emit("joined-room", { roomId });
   });
 
   socket.on("send-offer", ({ roomId, offer, fileInfo }) => {
-    console.log("📡 Offer stored for room:", roomId);
-    rooms.set(roomId, { offer, fileInfo });
+    const room = rooms.get(roomId);
+    if (room) {
+      rooms.set(roomId, { ...room, offer, fileInfo });
+    }
 
     // if receiver already joined, send immediately
     socket.to(roomId).emit("receive-offer", { offer, fileInfo });
   });
 
   socket.on("send-answer", ({ roomId, answer }) => {
-    console.log("📨 Answer received for room:", roomId);
+    const room = rooms.get(roomId);
+    rooms.set(roomId, { ...room, answer });
     socket.to(roomId).emit("receive-answer", { answer });
   });
 
-    socket.on("ice-candidate", (candidate) => {
-    socket.broadcast.emit("ice-candidate", candidate);
+  socket.on("ice-candidate", ({ roomId, candidate }) => {
+    socket.to(roomId).emit("ice-candidate", candidate);
   });
 
   socket.on("disconnect", () => {
@@ -52,4 +60,6 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, '0.0.0.0',() => console.log("✅ Server running on port 8001"));
+server.listen(PORT, "0.0.0.0", () =>
+  console.log("✅ Server running on port 8001")
+);
