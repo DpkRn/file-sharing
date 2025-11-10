@@ -55,6 +55,7 @@ export default function Receiver() {
     };
      peerRef.current.ondatachannel = (event) => {
       const channel = event.channel;
+      console.log("channel:",channel)
       const chunks = [];
       setStatus((prev) => ({ ...prev, channelReceived: true }));
 
@@ -64,15 +65,26 @@ export default function Receiver() {
       };
 
       // Receiving data chunks
-      channel.onmessage = (e) => chunks.push(e.data);
-
-      // Channel closed = file transfer complete
-      channel.onclose = () => {
+      channel.onmessage = (e) => {
+        //console.log("data:",e.data)
+       
+        const {done}=e.data 
+        if(!done){
+           console.log("chunks:",chunks)
+           chunks.push(e.data);
+        }else{
         const blob = new Blob(chunks, { type: fileInfo.fileType });
+        console.log("blob:",blob)
         const url = URL.createObjectURL(blob);
         setDownloadUrl(url);
         setStatus((prev) => ({ ...prev, dataReceived: true }));
         console.log("✅ File ready for download:", fileInfo.fileName);
+        }
+      }
+
+      // Channel closed = file transfer complete
+      channel.onclose = () => {
+      
       };
     };
 

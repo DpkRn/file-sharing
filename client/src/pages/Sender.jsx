@@ -121,7 +121,7 @@ export default function Sender() {
         <h1 className="text-2xl font-bold mt-4 mb-6">P2P File Sender</h1>
 
         {/* File Upload */}
-        <label className="cursor-pointer border-2 border-dashed rounded-xl p-8 hover:bg-indigo-50">
+        <label className="cursor-pointer  rounded-xl p-8 hover:bg-indigo-50">
           <Upload className="mx-auto text-indigo-600 mb-3" size={40} />
           <p>Select a file to share</p>
           <input type="file" hidden onChange={handleFileSelect} />
