@@ -17,3 +17,7 @@ sender:
 both:
  └── dataChannel.onopen
       └── send/receive data
+
+
+      create binary data of giveb mb:
+      command: dd if=/dev/urandom of=my_binary_file.bin bs=1M count=20

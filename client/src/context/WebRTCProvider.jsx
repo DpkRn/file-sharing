@@ -16,17 +16,17 @@ const ICE_SERVERS = [
 ];
 
 export const WebRTCProvider = ({ children }) => {
-  const { socket,roomId, isSender } = useSocket();
-  const [iceConnectionState,setIceConnectionState]=useState(null)
+  const { socket, roomId, isSender } = useSocket();
+  const [iceConnectionState, setIceConnectionState] = useState(null);
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
   const [isIceConnected, setIsIceConnected] = useState(false);
 
   useEffect(() => {
-    if (!socket){
-      console.log("socket is not there")
-      return ;
-    } ;
+    if (!socket) {
+      console.log("socket is not there");
+      return;
+    }
 
     // Create RTCPeerConnection
     const peer = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -45,14 +45,14 @@ export const WebRTCProvider = ({ children }) => {
       }
     };
 
-     peer.oniceconnectionstatechange = () => {
-      setIceConnectionState(peer.iceConnectionState)
+    peer.oniceconnectionstatechange = () => {
+      setIceConnectionState(peer.iceConnectionState);
       if (peer.iceConnectionState === "connected") {
-        console.log("connected")
-          setIsIceConnected(true)
+        console.log("connected");
+        setIsIceConnected(true);
       }
     };
-      
+
     peer.ondatachannel = (e) => {
       console.log("📥 Receiver: Data channel opened");
       dataChannelRef.current = e.channel;
@@ -64,23 +64,20 @@ export const WebRTCProvider = ({ children }) => {
       peer.close();
       dataChannelRef.current?.close();
     };
-  }, [socket,roomId]);
+  }, [socket, roomId]);
 
   // Handle incoming ICE candidates
   useEffect(() => {
     if (!socket) return;
- console.log("registered")
-    const handleIce = ({candidate}) => {
-
+    console.log("registered");
+    const handleIce = ({ candidate }) => {
       console.log("its time to add candidate");
       peerRef.current?.addIceCandidate(new RTCIceCandidate(candidate));
-      setIsIceConnected(true)
+      setIsIceConnected(true);
     };
     socket.on("ice-candidate", handleIce);
     return () => socket.off("ice-candidate", handleIce);
   }, [socket]);
-
- 
 
   const createDataChannel = (onMessage) => {
     const channel = peerRef.current.createDataChannel("file-transfer");
@@ -109,15 +106,14 @@ export const WebRTCProvider = ({ children }) => {
   };
 
   const setRemoteDescription = async (desc) => {
-  const peer = peerRef.current;
-  try {
-    await peer.setRemoteDescription(new RTCSessionDescription(desc));
-    console.log("✅ Remote description set");
-  } catch (err) {
-    console.warn("⚠️ Failed to set remote description:", err.message);
-  }
-};
-
+    const peer = peerRef.current;
+    try {
+      await peer.setRemoteDescription(new RTCSessionDescription(desc));
+      console.log("✅ Remote description set");
+    } catch (err) {
+      console.warn("⚠️ Failed to set remote description:", err.message);
+    }
+  };
 
   const sendData = (data) => {
     const dc = dataChannelRef.current;
@@ -141,7 +137,7 @@ export const WebRTCProvider = ({ children }) => {
         setRemoteDescription,
         createDataChannel,
         sendData,
-       isIceConnected,
+        isIceConnected,
         peerRef,
         dataChannelRef,
         iceConnectionState,
