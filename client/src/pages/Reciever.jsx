@@ -38,47 +38,44 @@ export default function Receiver() {
   }, [isConnected, roomId, isIceConnected]);
 
   const handleOffer = async ({ offer, fileInfo }) => {
-    setStatus((prev) => ({ ...prev, offerReceived: true }));
-    setStatus((prev) => ({ ...prev, joinedRoom: true }));
+    if (offer) {
+      setStatus((prev) => ({ ...prev, offerReceived: true }));
+    }
 
-     peerRef.current.ondatachannel = (event) => {
+    peerRef.current.ondatachannel = (event) => {
       const channel = event.channel;
-      console.log("channel:",channel)
+
       const chunks = [];
       setStatus((prev) => ({ ...prev, channelReceived: true }));
 
-      // Channel open
       channel.onopen = () => {
         setStatus((prev) => ({ ...prev, channelOpened: true }));
       };
 
-      // Receiving data chunks
       channel.onmessage = (e) => {
-  if (typeof e.data === "string") {
-    try {
-      const message = JSON.parse(e.data);
-      if (message.done) {
-        // File transfer complete — assemble blob
-        const blob = new Blob(chunks, { type: fileInfo.fileType });
-        const url = URL.createObjectURL(blob);
-        console.log("✅ File ready for download:", fileInfo.fileName);
-        setDownloadUrl(url);
-        console.log("url:",url)
-        setStatus((prev) => ({ ...prev, dataReceived: true }));
-      }
-    } catch (err) {
-      console.error("Error parsing message:", err);
-    }
-  } else {
-    // Binary chunk (ArrayBuffer or Blob)
-    chunks.push(e.data);
-  }
-};
+        if (typeof e.data === "string") {
+          try {
+            const message = JSON.parse(e.data);
+            if (message.done) {
+              // File transfer complete — assemble blob
+              const blob = new Blob(chunks, { type: fileInfo.fileType });
+              const url = URL.createObjectURL(blob);
+              console.log("✅ File ready for download:", fileInfo.fileName);
+              setDownloadUrl(url);
+              console.log("url:", url);
+              setStatus((prev) => ({ ...prev, dataReceived: true }));
+            }
+          } catch (err) {
+            console.error("Error parsing message:", err);
+          }
+        } else {
+          // Binary chunk (ArrayBuffer or Blob)
+          chunks.push(e.data);
+        }
+      };
 
       // Channel closed = file transfer complete
-      channel.onclose = () => {
-      
-      };
+      channel.onclose = () => {};
     };
 
     if (fileInfo) {
@@ -89,10 +86,9 @@ export default function Receiver() {
     socket.emit("send-answer", { roomId, answer });
   };
 
-  const handleAfterJoinedRoom=()=>{
-    setStatus((prev) => ({ ...prev, joinedRoom: true }))
-    
-  }
+  const handleAfterJoinedRoom = () => {
+    setStatus((prev) => ({ ...prev, joinedRoom: true }));
+  };
 
   useEffect(() => {
     if (!socket || !peerRef) return;
@@ -110,8 +106,8 @@ export default function Receiver() {
   useState(() => {
     if (!socket) return;
     socket.on("joined-room", handleAfterJoinedRoom);
-  },[socket, peerRef]);
-  
+  }, [socket, peerRef]);
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md text-center">
@@ -128,7 +124,7 @@ export default function Receiver() {
 
         {/* Download Card */}
         <div className="mt-4 mb-6">
-          <DownloadCard fileInfo={fileInfo} downloadUrl={downloadUrl}  />
+          <DownloadCard fileInfo={fileInfo} downloadUrl={downloadUrl} />
         </div>
 
         {/* ✅ Connection Status */}
