@@ -51,10 +51,14 @@ export default function Sender() {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break; // file completely read
+        if (done){
+          console.log("breaking")
+break
+        } ; // file completely read
 
         // value is a Uint8Array chunk (usually ~64KB)
-        dc.send(value);
+        console.log("value:",value)
+        sendData(value);
         sentBytes += value.length;
 
         // Update progress
@@ -73,6 +77,8 @@ export default function Sender() {
   // 📂 Handle File Selection
   const handleFileSelect = async (e) => {
     const f = e.target.files[0];
+     // const [fileHandle] = await window.showOpenFilePicker();
+    // const f = await fileHandle.getFile();
     if (!f) return;
     setFile(f);
 
@@ -166,6 +172,7 @@ export default function Sender() {
           <Upload className="mx-auto text-indigo-600 mb-3" size={40} />
           <p>Select a file to share</p>
           <input type="file" hidden onChange={handleFileSelect} />
+           <button hidden onClick={handleFileSelect} />
         </label>
 
         {/* Progress */}

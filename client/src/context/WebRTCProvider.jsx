@@ -13,6 +13,7 @@ export const useWebRTC = () => useContext(WebRTCContext);
 const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun.duocom.es:3478" },
 ];
 
 export const WebRTCProvider = ({ children }) => {

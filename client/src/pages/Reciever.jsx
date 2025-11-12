@@ -7,9 +7,10 @@ import DownloadCard from "../components/DownloadCard";
 
 export default function Receiver() {
   const { url: roomId } = useParams();
-  const { socket, isConnected, setIsSender, isSender } = useSocket();
+  const { socket, isConnected, setIsSender, isSender,setRoomId } = useSocket();
   const { peerRef, createAnswer, isIceConnected } = useWebRTC();
   const [fileInfo, setFileInfo] = useState(null);
+  const [isComplete,setComplete]=useState(false)
   // const [channel, setChannel] = useState(null);
   const writerRef = useRef(null);
 
@@ -27,6 +28,7 @@ export default function Receiver() {
   // 🧠 update when websocket connects
   useEffect(() => {
     if (roomId) {
+      setRoomId(roomId)
       setIsSender(false);
     }
     if (isConnected) {
@@ -54,6 +56,7 @@ export default function Receiver() {
 
       channel.onopen = () => {
         setStatus((prev) => ({ ...prev, channelOpened: true }));
+        setComplete(true)
         // setChannel(channel);
         channel.onmessage = async (e) => {
           if (typeof e.data === "string") {
@@ -61,18 +64,12 @@ export default function Receiver() {
               const message = JSON.parse(e.data);
               if (message.start) {
                 // 🔹 Ask user where to save the file
-                const handle = await window.showSaveFilePicker({
-                  suggestedName: message.fileName,
-                });
-
-                writableStream = await handle.createWritable();
-                writer = writableStream.getWriter();
                 console.log("🟢 Started writing to:", message.fileName);
               }
 
               if (message.done) {
                 // 🔹 Finish writing
-                await writer.close();
+                await  writerRef.current.close();
                 console.log("✅ File saved successfully!");
                 setStatus((prev) => ({ ...prev, dataReceived: true }));
               }
@@ -81,9 +78,10 @@ export default function Receiver() {
             }
           } else {
             // Binary chunk (ArrayBuffer or Blob)
-            if (writer) {
+            if ( writerRef.current) {
+              console.log("down:",e.data)
               // 🔹 Write directly to file — no memory buildup
-              await writer.write(e.data);
+              await  writerRef.current.write(e.data);
             }
           }
         };
@@ -150,7 +148,7 @@ export default function Receiver() {
 
         {/* Download Card */}
         <div className="mt-4 mb-6">
-          <DownloadCard fileInfo={fileInfo} handleDownload={handleDownload} />
+          <DownloadCard fileInfo={fileInfo} handleDownload={handleDownload} isComplete={isComplete} />
         </div>
 
         {/* ✅ Connection Status */}

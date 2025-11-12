@@ -1,8 +1,7 @@
 import { X, Download } from "lucide-react";
 import React, { use, useEffect, useState } from "react";
 
-export default function DownloadCard({ onClose, fileInfo, handleDownload }) {
-  console.log(fileInfo)
+export default function DownloadCard({ onClose, fileInfo, handleDownload,isComplete }) {
 
   return (
     <div className="w-[320px] bg-[#2a2b33] rounded-2xl p-4 text-white relative shadow-lg">
@@ -28,12 +27,14 @@ export default function DownloadCard({ onClose, fileInfo, handleDownload }) {
         </div>
       )} */}
 
-      <button
+        <button
         onClick={handleDownload}
         // disabled={!downloadUrl}
-        className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 text-white font-medium 
-        
-        `}
+        className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 text-white font-medium ${
+          isComplete
+            ? "bg-[#f26b1d] hover:bg-[#e55c0f]"
+            : "bg-gray-500 cursor-not-allowed"
+        }`}
       >
         {/* {isComplete ? "Download" : `Receiving ${progress}%`} */}
         <Download size={18} />
