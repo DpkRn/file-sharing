@@ -8,6 +8,7 @@ export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [roomId, setRoomId] = useState('');
   const [isSender,setIsSender]=useState(true);
+  const [socketError,setSocketError]=useState("")
 
   const socket = useMemo(
     () =>
@@ -23,6 +24,7 @@ export const SocketProvider = ({ children }) => {
     //register connect even
     socket.on("connect", () => {
       console.log("✅ Connected to Socket:", socket.id);
+      setSocketError("")
       setIsConnected(true);
     });
 
@@ -34,6 +36,7 @@ export const SocketProvider = ({ children }) => {
 
     //register connection error
     socket.on("connect_error", (err) => {
+      setSocketError(err.message)
       console.error("⚠️ Socket connection error:", err.message);
     });
 
@@ -45,7 +48,7 @@ export const SocketProvider = ({ children }) => {
   
 
   return (
-    <SocketContext.Provider value={{ socket, isConnected, roomId, setRoomId,setIsSender,isSender }}>
+    <SocketContext.Provider value={{ socket, isConnected, roomId, setRoomId,setIsSender,isSender,socketError }}>
       {children}
     </SocketContext.Provider>
   );

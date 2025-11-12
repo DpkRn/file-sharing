@@ -12,8 +12,8 @@ export default function Sender() {
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const { socket, setRoomId, isConnected, isSender } = useSocket();
-  const { createOffer, createDataChannel, sendData, peerRef, isIceConnected } =
+  const { socket, setRoomId, isConnected, isSender,socketError,roomId } = useSocket();
+  const { createOffer, createDataChannel, sendData, peerRef, isIceConnected,iceConnectionState } =
     useWebRTC();
 
   const [status, setStatus] = useState({
@@ -59,52 +59,57 @@ export default function Sender() {
     if (!f) return;
     setFile(f);
 
-    const roomId = generateRoomId();
-    setRoomId(roomId);
-    setShareUrl(`${window.location.origin}/share/${roomId}`);
+    const room= generateRoomId();
+    setRoomId(room);
+    setShareUrl(`${window.location.origin}/share/${room}`);
 
-    socket.emit("join-room", { roomId: roomId, isSender: true });
-    setStatus((prev) => ({ ...prev, joinedRoom: true }));
-
-    // socket.on("reciever-joined", async () => {
-      const dc = createDataChannel();
-      setStatus((prev) => ({ ...prev, channelCreated: true }));
-
-      // Create & send offer
-      const offer = await createOffer();
-      setStatus((prev) => ({ ...prev, offerCreated: true }));
-
-      socket.emit("send-offer", {
-        roomId: roomId,
-        offer,
-        fileInfo: getFileInfo(f),
-      });
-      setStatus((prev) => ({ ...prev, offerSent: true }));
-
-      socket.on("receive-answer", async ({ answer }) => {
-        if (!answer) return;
-        await peerRef.current.setRemoteDescription(answer);
-        setStatus((prev) => ({ ...prev, offerAccepted: true }));
-        console.log("🎯 Answer received, ready to send file");
-        setStatus((prev) => ({ ...prev, answerReceived: true }));
-        // When Data Channel opens → send file
-        dc.onopen = () => {
-          setStatus((prev) => ({ ...prev, channelOpened: true }));
-          sendFile(f, dc);
-        };
-      });
-    // });
-    peerRef.current.onicecandidate = (e) => {
-      console.log("iceCandidate done:",e.candidate)
-      if (e.candidate) {
-        console.log(e.candidate)
-        console.log("roomID:",roomId)
-          socket.emit("ice-candidate", { roomId, candidate: e.candidate,isSender })
-      }
-    };
-
+    socket.emit("join-room", { roomId: room, isSender: true });
+    socket.on("joined-room",async ({roomId,isSender})=> {
+      await handleAfterJoinedRoom({roomId,isSender,f})
+    });
     // When answer received
   };
+
+  const handleAfterJoinedRoom = async({roomId,isSender,f}) => {
+    console.log("joined:",isSender)
+    setStatus((prev) => ({ ...prev, joinedRoom: true }))
+   if (!isSender){
+    const dc = createDataChannel();
+    setStatus((prev) => ({ ...prev, channelCreated: true }));
+
+     dc.onopen = () => {
+        setStatus((prev) => ({ ...prev, channelOpened: true }));
+        sendFile(f, dc);
+    };
+    // Create & send offer
+    const offer = await createOffer();
+    setStatus((prev) => ({ ...prev, offerCreated: true }));
+   console.log("file:",f)
+    socket.emit("send-offer", {
+      roomId: roomId,
+      offer,
+      fileInfo: getFileInfo(f),
+    });
+    setStatus((prev) => ({ ...prev, offerSent: true }));
+
+    socket.on("receive-answer", async ({ answer }) => {
+      if (!answer) return;
+      await peerRef.current.setRemoteDescription(answer);
+      setStatus((prev) => ({ ...prev, offerAccepted: true }));
+      console.log("🎯 Answer received, ready to send file");
+      setStatus((prev) => ({ ...prev, answerReceived: true }));
+      // When Data Channel opens → send file
+     
+    });
+   }
+   
+  };
+
+  useState(() => {
+    if (!socket) return;
+
+   
+  }, [socket, peerRef,roomId,file]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
@@ -154,17 +159,17 @@ export default function Sender() {
             {isSender && "Sender Connection Status"}
           </h3>
           {[
-            ["WebSocket Connected", status.socketConnected],
-            ["Joined Room", status.joinedRoom],
-            ["Data Channel Created", status.channelCreated],
+            ["WebSocket Connected", status.socketConnected,""],
+            ["Joined Room", status.joinedRoom,""],
+            ["Data Channel Created", status.channelCreated,""],
             ["Offer Created", status.offerCreated],
             ["Offer Sent", status.offerSent],
-            ["Offer Accepted by Peer", status.offerAccepted],
-            ["Answer Received", status.answerReceived],
-            ["ICE Connected", status.iceConnected],
-            ["Channel Opened", status.channelOpened],
-            ["Data Sent Successfully", status.dataSent],
-          ].map(([label, done], i) => (
+            ["Offer Accepted by Peer", status.offerAccepted,""],
+            ["Answer Received", status.answerReceived,""],
+            ["ICE Connected", status.iceConnected,iceConnectionState],
+            ["Channel Opened", status.channelOpened,""],
+            ["Data Sent Successfully", status.dataSent,""],
+          ].map(([label, done,state], i) => (
             <div key={i} className="flex items-center gap-2 mb-1">
               <input type="checkbox" checked={done} readOnly />
               <span className={`${done ? "text-green-600" : "text-gray-500"}`}>
@@ -172,6 +177,7 @@ export default function Sender() {
               </span>
             </div>
           ))}
+          {socketError&&<p className="text-red-400">{socketError}</p>}
         </div>
       </div>
     </div>

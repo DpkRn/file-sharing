@@ -41,18 +41,6 @@ export default function Receiver() {
     setStatus((prev) => ({ ...prev, offerReceived: true }));
     setStatus((prev) => ({ ...prev, joinedRoom: true }));
 
-    peerRef.current.onicecandidate = (e) => {
-      console.log("iceCandidate done:", e.candidate);
-      if (e.candidate) {
-        console.log(e.candidate);
-        console.log("roomID:", roomId);
-        socket.emit("ice-candidate", {
-          roomId,
-          candidate: e.candidate,
-          isSender,
-        });
-      }
-    };
      peerRef.current.ondatachannel = (event) => {
       const channel = event.channel;
       console.log("channel:",channel)
@@ -66,21 +54,26 @@ export default function Receiver() {
 
       // Receiving data chunks
       channel.onmessage = (e) => {
-        //console.log("data:",e.data)
-       
-        const {done}=e.data 
-        if(!done){
-           console.log("chunks:",chunks)
-           chunks.push(e.data);
-        }else{
+  if (typeof e.data === "string") {
+    try {
+      const message = JSON.parse(e.data);
+      if (message.done) {
+        // File transfer complete — assemble blob
         const blob = new Blob(chunks, { type: fileInfo.fileType });
-        console.log("blob:",blob)
         const url = URL.createObjectURL(blob);
-        setDownloadUrl(url);
-        setStatus((prev) => ({ ...prev, dataReceived: true }));
         console.log("✅ File ready for download:", fileInfo.fileName);
-        }
+        setDownloadUrl(url);
+        console.log("url:",url)
+        setStatus((prev) => ({ ...prev, dataReceived: true }));
       }
+    } catch (err) {
+      console.error("Error parsing message:", err);
+    }
+  } else {
+    // Binary chunk (ArrayBuffer or Blob)
+    chunks.push(e.data);
+  }
+};
 
       // Channel closed = file transfer complete
       channel.onclose = () => {
@@ -96,18 +89,29 @@ export default function Receiver() {
     socket.emit("send-answer", { roomId, answer });
   };
 
+  const handleAfterJoinedRoom=()=>{
+    setStatus((prev) => ({ ...prev, joinedRoom: true }))
+    
+  }
+
   useEffect(() => {
     if (!socket || !peerRef) return;
     console.log("peerref:", peerRef.current);
 
     // 🟢 Join the room
     socket.emit("join-room", { roomId, isSender: false });
+
     socket.on("receive-offer", handleOffer);
     // Setup to receive DataChannel
 
     return () => socket.off("receive-offer", handleOffer);
   }, [socket, peerRef, roomId]);
 
+  useState(() => {
+    if (!socket) return;
+    socket.on("joined-room", handleAfterJoinedRoom);
+  },[socket, peerRef]);
+  
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md text-center">
@@ -124,7 +128,7 @@ export default function Receiver() {
 
         {/* Download Card */}
         <div className="mt-4 mb-6">
-          <DownloadCard fileInfo={fileInfo} downloadUrl={downloadUrl} />
+          <DownloadCard fileInfo={fileInfo} downloadUrl={downloadUrl}  />
         </div>
 
         {/* ✅ Connection Status */}

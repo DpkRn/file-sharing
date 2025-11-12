@@ -17,29 +17,42 @@ const ICE_SERVERS = [
 
 export const WebRTCProvider = ({ children }) => {
   const { socket,roomId, isSender } = useSocket();
+  const [iceConnectionState,setIceConnectionState]=useState(null)
   const peerRef = useRef(null);
   const dataChannelRef = useRef(null);
   const [isIceConnected, setIsIceConnected] = useState(false);
-  const [remoteReady, setRemoteReady] = useState(false);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket){
+      console.log("socket is not there")
+      return ;
+    } ;
 
     // Create RTCPeerConnection
     const peer = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     peerRef.current = peer;
 
-    
-
-  
+    peerRef.current.onicecandidate = (e) => {
+      console.log("iceCandidate done:", e.candidate);
+      if (e.candidate) {
+        console.log(e.candidate);
+        console.log("roomID:", roomId);
+        socket.emit("ice-candidate", {
+          roomId,
+          candidate: e.candidate,
+          isSender,
+        });
+      }
+    };
 
      peer.oniceconnectionstatechange = () => {
+      setIceConnectionState(peer.iceConnectionState)
       if (peer.iceConnectionState === "connected") {
         console.log("connected")
           setIsIceConnected(true)
       }
     };
-
+      
     peer.ondatachannel = (e) => {
       console.log("📥 Receiver: Data channel opened");
       dataChannelRef.current = e.channel;
@@ -51,7 +64,7 @@ export const WebRTCProvider = ({ children }) => {
       peer.close();
       dataChannelRef.current?.close();
     };
-  }, [socket]);
+  }, [socket,roomId]);
 
   // Handle incoming ICE candidates
   useEffect(() => {
@@ -72,11 +85,6 @@ export const WebRTCProvider = ({ children }) => {
   const createDataChannel = (onMessage) => {
     const channel = peerRef.current.createDataChannel("file-transfer");
     dataChannelRef.current = channel;
-
-    channel.onopen = () => {
-      console.log("🚀 DataChannel open (sender)");
-      setRemoteReady(true);
-    };
 
     channel.onclose = () => console.log("❌ DataChannel closed");
     channel.onerror = (err) => console.error("⚠️ DataChannel error:", err);
@@ -134,9 +142,9 @@ export const WebRTCProvider = ({ children }) => {
         createDataChannel,
         sendData,
        isIceConnected,
-        remoteReady,
         peerRef,
         dataChannelRef,
+        iceConnectionState,
       }}
     >
       {children}

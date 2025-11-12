@@ -1,10 +1,10 @@
 import { X, Download } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React, { use, useEffect, useState } from "react";
 
-export default function DownloadCard({ onClose, fileInfo, incomingChunks }) {
+export default function DownloadCard({ onClose, fileInfo, incomingChunks,downloadUrl }) {
   const { fileName, fileSize, fileType } = fileInfo || {};
   const [progress, setProgress] = useState(0);
-  const [downloadUrl, setDownloadUrl] = useState(null);
+  // const [downloadUrl, setDownloadUrl] = useState(null);
   const [isComplete, setIsComplete] = useState(false);
 
   const formatSize = (bytes) => {
@@ -15,21 +15,11 @@ export default function DownloadCard({ onClose, fileInfo, incomingChunks }) {
   };
 
   // 🧠 Assemble file once all chunks are received
-  useEffect(() => {
-    if (!incomingChunks?.length) return;
 
-    const totalBytes = incomingChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
-    const progressPercent = ((totalBytes / fileSize) * 100).toFixed(1);
-    setProgress(progressPercent);
-
-    if (totalBytes >= fileSize) {
-      const blob = new Blob(incomingChunks, { type: fileType });
-      const url = URL.createObjectURL(blob);
-      setDownloadUrl(url);
-      setIsComplete(true);
-    }
-  }, [incomingChunks, fileSize, fileType]);
-
+  useEffect(()=>{
+    setIsComplete(downloadUrl?true:false)
+  },[downloadUrl])
+  
   const handleDownload = () => {
     if (!downloadUrl) return;
     const link = document.createElement("a");
@@ -66,7 +56,7 @@ export default function DownloadCard({ onClose, fileInfo, incomingChunks }) {
 
       <button
         onClick={handleDownload}
-        disabled={!isComplete}
+        disabled={!downloadUrl}
         className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 text-white font-medium ${
           isComplete
             ? "bg-[#f26b1d] hover:bg-[#e55c0f]"
