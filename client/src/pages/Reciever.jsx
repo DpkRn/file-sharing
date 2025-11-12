@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Wifi, Download } from "lucide-react";
 import { useSocket } from "../context/SocketProvider";
@@ -10,7 +10,8 @@ export default function Receiver() {
   const { socket, isConnected, setIsSender, isSender } = useSocket();
   const { peerRef, createAnswer, isIceConnected } = useWebRTC();
   const [fileInfo, setFileInfo] = useState(null);
-  const [downloadUrl, setDownloadUrl] = useState(null);
+  // const [channel, setChannel] = useState(null);
+  const writerRef = useRef(null);
 
   const [status, setStatus] = useState({
     socketConnected: false,
@@ -41,6 +42,9 @@ export default function Receiver() {
     if (offer) {
       setStatus((prev) => ({ ...prev, offerReceived: true }));
     }
+    if (fileInfo) {
+      setFileInfo(fileInfo);
+    }
 
     peerRef.current.ondatachannel = (event) => {
       const channel = event.channel;
@@ -50,28 +54,39 @@ export default function Receiver() {
 
       channel.onopen = () => {
         setStatus((prev) => ({ ...prev, channelOpened: true }));
-      };
+        // setChannel(channel);
+        channel.onmessage = async (e) => {
+          if (typeof e.data === "string") {
+            try {
+              const message = JSON.parse(e.data);
+              if (message.start) {
+                // 🔹 Ask user where to save the file
+                const handle = await window.showSaveFilePicker({
+                  suggestedName: message.fileName,
+                });
 
-      channel.onmessage = (e) => {
-        if (typeof e.data === "string") {
-          try {
-            const message = JSON.parse(e.data);
-            if (message.done) {
-              // File transfer complete — assemble blob
-              const blob = new Blob(chunks, { type: fileInfo.fileType });
-              const url = URL.createObjectURL(blob);
-              console.log("✅ File ready for download:", fileInfo.fileName);
-              setDownloadUrl(url);
-              console.log("url:", url);
-              setStatus((prev) => ({ ...prev, dataReceived: true }));
+                writableStream = await handle.createWritable();
+                writer = writableStream.getWriter();
+                console.log("🟢 Started writing to:", message.fileName);
+              }
+
+              if (message.done) {
+                // 🔹 Finish writing
+                await writer.close();
+                console.log("✅ File saved successfully!");
+                setStatus((prev) => ({ ...prev, dataReceived: true }));
+              }
+            } catch (err) {
+              console.error("Error parsing message:", err);
             }
-          } catch (err) {
-            console.error("Error parsing message:", err);
+          } else {
+            // Binary chunk (ArrayBuffer or Blob)
+            if (writer) {
+              // 🔹 Write directly to file — no memory buildup
+              await writer.write(e.data);
+            }
           }
-        } else {
-          // Binary chunk (ArrayBuffer or Blob)
-          chunks.push(e.data);
-        }
+        };
       };
 
       // Channel closed = file transfer complete
@@ -108,6 +123,17 @@ export default function Receiver() {
     socket.on("joined-room", handleAfterJoinedRoom);
   }, [socket, peerRef]);
 
+  const handleDownload = async () => {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: fileInfo.fileName,
+    });
+    const writable = await handle.createWritable();
+    writerRef.current = writable.getWriter();
+    socket.emit("download-requested", { roomId });
+
+    console.log("clicked");
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md text-center">
@@ -124,7 +150,7 @@ export default function Receiver() {
 
         {/* Download Card */}
         <div className="mt-4 mb-6">
-          <DownloadCard fileInfo={fileInfo} downloadUrl={downloadUrl} />
+          <DownloadCard fileInfo={fileInfo} handleDownload={handleDownload} />
         </div>
 
         {/* ✅ Connection Status */}

@@ -85,6 +85,9 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("ice-candidate", { candidate });
   });
 
+  socket.on("download-requested",({roomId})=>{
+    socket.to(roomId).emit("download-requested",{})
+  })
   socket.on("disconnect", () => {
     console.log("❌ User disconnected:", socket.id);
   });
