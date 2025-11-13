@@ -87,6 +87,7 @@ export const WebRTCProvider = ({ children }) => {
     channel.onclose = () => console.log("❌ DataChannel closed");
     channel.onerror = (err) => console.error("⚠️ DataChannel error:", err);
     channel.onmessage = (e) => onMessage && onMessage(e.data);
+    channel.onbufferedamountlow = () => console.log("🟢 Buffered amount low — resuming sending");
 
     return channel;
   };
@@ -116,14 +117,18 @@ export const WebRTCProvider = ({ children }) => {
     }
   };
 
-  const sendData = (data) => {
-    const dc = dataChannelRef.current;
-    if (dc?.readyState === "open") {
+const sendData = (data) => {
+  const dc = dataChannelRef.current;
+  if (dc?.readyState === "open") {
+    try {
       dc.send(data);
-    } else {
-      console.warn("⚠️ DataChannel not ready to send data");
+    } catch (err) {
+      console.error("❌ Error sending data:", err);
     }
-  };
+  } else {
+    console.warn("⚠️ DataChannel not open, skipping chunk");
+  }
+};
 
   const handleIncomingMessage = (data) => {
     // optional: can be replaced dynamically by user

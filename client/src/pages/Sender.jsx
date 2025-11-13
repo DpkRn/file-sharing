@@ -43,42 +43,87 @@ export default function Sender() {
   }, [isConnected, isIceConnected]);
 
   // 🧩 File Sending Logic
-  const sendFile = async (file, dc) => {
-    const stream = file.stream();
-    const reader = stream.getReader();
-    let sentBytes = 0;
+const sendFile = async (file, dc) => {
+  if (!file || !dc) return console.error("❌ Missing file or DataChannel");
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done){
-          console.log("breaking")
-break
-        } ; // file completely read
+  const reader = file.stream().getReader();
+  let sentBytes = 0;
+  const CHUNK_SIZE = 16 * 1024; // 16 KB
+  const MAX_BUFFER = 8 * CHUNK_SIZE; // when to pause sending
 
-        // value is a Uint8Array chunk (usually ~64KB)
-        console.log("value:",value)
-        sendData(value);
-        sentBytes += value.length;
+  try {
+    console.log("📤 Starting file send:", file.name);
 
-        // Update progress
-        setProgress(Math.round((sentBytes / file.size) * 100));
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        console.log("📦 All chunks read — finishing...");
+        break;
       }
 
-      // ✅ Notify receiver that file is done
-      dc.send(JSON.stringify({ done: true }));
-      console.log("✅ File sent completely");
-      setStatus((prev) => ({ ...prev, dataSent: true }));
-    } catch (err) {
-      console.error("❌ Error sending file:", err);
+      // Throttle if buffer is full
+      while (dc.bufferedAmount > MAX_BUFFER) {
+        await new Promise((resolve) => {
+          const check = () => {
+            if (dc.bufferedAmount < MAX_BUFFER / 2) {
+              dc.removeEventListener("bufferedamountlow", check);
+              resolve();
+            }
+          };
+          dc.addEventListener("bufferedamountlow", check);
+        });
+      }
+      //debuger
+      dc.bufferedAmountLowThreshold = 32 * 1024; // 32KB threshold
+
+
+
+      // Check if channel is still open
+      if (dc.readyState !== "open") {
+        console.warn("⚠️ DataChannel closed, stopping send loop.");
+        return;
+      }
+
+      try {
+        dc.send(value);
+      } catch (sendErr) {
+        console.error("⚠️ Error while sending chunk:", sendErr);
+        return;
+      }
+
+      sentBytes += value.length;
+      setProgress(Math.round((sentBytes / file.size) * 100));
     }
-  };
+
+    // ✅ File completely sent
+    if (dc.readyState === "open") {
+  console.log("⏳ Waiting for buffer to flush...");
+  await new Promise((resolve) => {
+    const check = () => {
+      if (dc.bufferedAmount === 0) resolve();
+      else setTimeout(check, 50);
+    };
+    check();
+  });
+
+  // Optional short delay to ensure all packets processed
+  await new Promise(r => setTimeout(r, 200));
+
+  dc.send(JSON.stringify({ done: true }));
+  console.log("✅ File sent completely and flushed!");
+  setStatus((prev) => ({ ...prev, dataSent: true }));
+}
+
+  } catch (err) {
+    console.error("❌ Error sending file:", err);
+  }
+};
 
   // 📂 Handle File Selection
   const handleFileSelect = async (e) => {
-    const f = e.target.files[0];
-     // const [fileHandle] = await window.showOpenFilePicker();
-    // const f = await fileHandle.getFile();
+    // const f = e.target.files[0];
+    const [fileHandle] = await window.showOpenFilePicker();
+    const f = await fileHandle.getFile();
     if (!f) return;
     setFile(f);
 
@@ -110,10 +155,10 @@ break
           })
         );
 
-        socket.on("download-requested",()=>{
-          console.log("download requested")
+        socket.on("download-requested", () => {
+          console.log("download requested");
           sendFile(f, dc);
-        })
+        });
       };
       // Create & send offer
       const offer = await createOffer();
@@ -171,8 +216,8 @@ break
         <label className="cursor-pointer  rounded-xl p-8 hover:bg-indigo-50">
           <Upload className="mx-auto text-indigo-600 mb-3" size={40} />
           <p>Select a file to share</p>
-          <input type="file" hidden onChange={handleFileSelect} />
-           <button hidden onClick={handleFileSelect} />
+          {/* <input type="file" hidden onChange={handleFileSelect} /> */}
+          <button hidden onClick={handleFileSelect} />
         </label>
 
         {/* Progress */}
@@ -222,7 +267,7 @@ break
           ))}
           {socketError && <p className="text-red-400">{socketError}</p>}
         </div>
-        <button onClick={handleBtn}>click</button>
+        {/* <button onClick={handleBtn}>click</button> */}
       </div>
     </div>
   );
