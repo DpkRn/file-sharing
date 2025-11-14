@@ -27,6 +27,7 @@ export const WebRTCProvider = ({ children }) => {
       console.log("socket is not there");
       return;
     }
+    
 
     // Create RTCPeerConnection
     const peer = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -53,11 +54,11 @@ export const WebRTCProvider = ({ children }) => {
       }
     };
 
-    peer.ondatachannel = (e) => {
-      console.log("📥 Receiver: Data channel opened");
-      dataChannelRef.current = e.channel;
-      dataChannelRef.current.onmessage = (e) => handleIncomingMessage(e.data);
-    };
+    // peer.ondatachannel = (e) => {
+    //   console.log("📥 Receiver: Data channel opened");
+    //   dataChannelRef.current = e.channel;
+    //   dataChannelRef.current.onmessage = (e) => handleIncomingMessage(e.data);
+    // };
 
     // Cleanup
     return () => {
@@ -115,13 +116,22 @@ export const WebRTCProvider = ({ children }) => {
     }
   };
 
-  const sendData = (data) => {
+  const sendData =(data) => {
     const dc = dataChannelRef.current;
-    if (dc?.readyState === "open") {
-      dc.send(data);
-    } else {
-      console.warn("⚠️ DataChannel not ready to send data");
-    }
+    return new Promise((resolve) => {
+      const trySend = () => {
+        if (dc.bufferedAmount < MAX_BUFFER) {
+          dc.send(chunk);
+          resolve();
+        } else {
+          // If too full → wait 1 ms → try again
+          console.log("trying again after 1ms")
+          setTimeout(trySend, 1);
+        }
+      };
+
+      trySend();
+    });
   };
 
   const handleIncomingMessage = (data) => {

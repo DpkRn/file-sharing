@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Wifi, Download } from "lucide-react";
 import { useSocket } from "../context/SocketProvider";
@@ -7,10 +7,11 @@ import DownloadCard from "../components/DownloadCard";
 
 export default function Receiver() {
   const { url: roomId } = useParams();
-  const { socket, isConnected, setIsSender, isSender } = useSocket();
+  const { socket, isConnected, setIsSender, isSender,setRoomId } = useSocket();
   const { peerRef, createAnswer, isIceConnected } = useWebRTC();
   const [fileInfo, setFileInfo] = useState(null);
   const [downloadUrl, setDownloadUrl] = useState(null);
+  const writableRef=useRef(null)
 
   const [status, setStatus] = useState({
     socketConnected: false,
@@ -26,6 +27,7 @@ export default function Receiver() {
   // 🧠 update when websocket connects
   useEffect(() => {
     if (roomId) {
+      setRoomId(roomId)
       setIsSender(false);
     }
     if (isConnected) {
@@ -43,9 +45,8 @@ export default function Receiver() {
     }
 
     peerRef.current.ondatachannel = (event) => {
+      console.log("channel:",event.channel)
       const channel = event.channel;
-
-      const chunks = [];
       setStatus((prev) => ({ ...prev, channelReceived: true }));
 
       channel.onopen = () => {
@@ -57,20 +58,16 @@ export default function Receiver() {
           try {
             const message = JSON.parse(e.data);
             if (message.done) {
-              // File transfer complete — assemble blob
-              const blob = new Blob(chunks, { type: fileInfo.fileType });
-              const url = URL.createObjectURL(blob);
-              console.log("✅ File ready for download:", fileInfo.fileName);
-              setDownloadUrl(url);
-              console.log("url:", url);
-              setStatus((prev) => ({ ...prev, dataReceived: true }));
+              alert("file completed")
             }
           } catch (err) {
             console.error("Error parsing message:", err);
           }
         } else {
           // Binary chunk (ArrayBuffer or Blob)
-          chunks.push(e.data);
+          const chunk=e.data
+          console.log(chunk)
+          writableRef.current.write(chunk)
         }
       };
 
@@ -108,6 +105,12 @@ export default function Receiver() {
     socket.on("joined-room", handleAfterJoinedRoom);
   }, [socket, peerRef]);
 
+  const handleFile=async()=>{
+    const fileHandle = await showSaveFilePicker({ suggestedName: fileInfo.fileName || "deepak" });
+    const writable = await fileHandle.createWritable();
+    writableRef.current=writable
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100">
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md text-center">
@@ -126,6 +129,7 @@ export default function Receiver() {
         <div className="mt-4 mb-6">
           <DownloadCard fileInfo={fileInfo} downloadUrl={downloadUrl} />
         </div>
+        <button onClick={handleFile}>show file picker</button>
 
         {/* ✅ Connection Status */}
         <div className="text-left">
