@@ -13,6 +13,13 @@ export const useWebRTC = () => useContext(WebRTCContext);
 const ICE_SERVERS = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
+
+  // TURN server (Expressturn)
+  {
+    urls: "turn:relay1.expressturn.com:3480?transport=udp",
+    username: "000000002078142511",
+    credential: "VZ805jWsN6nlnUxR4wA0r6Uv73Q="
+  }
 ];
 
 export const WebRTCProvider = ({ children }) => {
